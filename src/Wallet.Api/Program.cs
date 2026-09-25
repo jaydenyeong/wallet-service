@@ -1,11 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using Scalar.AspNetCore;
-using Wallet.Api.Data;
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Wallet.Api.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
+using Wallet.Api.Data;
+using Wallet.Api.Ledger;
+using Wallet.Api.Auth;
+using System.Text;
+using Wallet.Api;
+using Wallet.Api.Wallets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +39,8 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+builder.Services.AddExceptionHandler<DomainExceptionHandler>();
+builder.Services.AddScoped<LedgerService>(); 
 
 var app = builder.Build();
 
@@ -57,6 +62,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 }
 
 app.MapAuthEndpoints();
+app.MapWalletEndpoints();
 
 app.Run();
 

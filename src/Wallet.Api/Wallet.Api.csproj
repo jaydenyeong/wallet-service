@@ -21,4 +21,8 @@
     <PackageReference Include="Scalar.AspNetCore" Version="2.17.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Wallet.Contracts\Wallet.Contracts.csproj" />
+  </ItemGroup>
+
 </Project>

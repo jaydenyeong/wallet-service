@@ -1,23 +1,29 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Wallet.Api.Auth;
 using Wallet.Api.Data;
 using Wallet.Api.Ledger;
+using Wallet.Contracts;
 
 namespace Wallet.Api.Wallets;
 
 public sealed record TopupRequest(long Amount);
 public sealed record MoneyMovementResponse(Guid TransactionId, long Amount, long Balance);
+public sealed record TransferRequest(string ToEmail, long Amount, string? Note);
+
 
 public static class WalletEndpoints
 {
     public const long MaxTopup = 500_000;
+    public const long MaxTransfer = 1_000_000;
     public static IEndpointRouteBuilder MapWalletEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/wallet").RequireAuthorization().WithTags("Wallet");
         group.MapPost("/topups", Topup);
+        group.MapPost("/transfers", Transfer);
         return app;
     }
 
@@ -56,6 +62,86 @@ public static class WalletEndpoints
             if (replay is not null) return Results.Ok(replay);
             throw;
         }
+    }
+    private static async Task<IResult> Transfer(
+        TransferRequest req,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        ClaimsPrincipal principal, WalletDbContext db, LedgerService ledger, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 100)
+            return Results.Problem(statusCode: 400, title: "A valid Idempotency-Key header is required");
+        if (req.Amount <= 0 || req.Amount > MaxTransfer)
+            return Results.Problem(statusCode: 400, title: $"Amount must be between 1 and {MaxTransfer} sen");
+        if (req.Note is {Length: > 140})
+            return Results.Problem(statusCode: 400, title: "Note must be at most 140 characters");
+        
+        var senderId = principal.GetUserId();
+        var toEmail = (req.ToEmail ?? "").Trim().ToLowerInvariant();
+
+        var sender = await db.Accounts.AsNoTracking()
+            .Where(a => a.UserId == senderId && a.Kind == AccountKind.UserWallet)
+            .Join(db.Users, a => a.UserId, u => (Guid?)u.Id, (a, u) => new {WalletId = a.Id, u.Email})
+            .SingleAsync(ct);
+
+        var recipient = await db.Users.AsNoTracking()
+            .Where(u => u.Email == toEmail)
+            .Join(db.Accounts.Where(a => a.Kind == AccountKind.UserWallet),
+                u => (Guid?)u.Id, a => a.UserId, (u, a) => new {UserId = u.Id, WalletId = a.Id, u.Email})
+            .SingleOrDefaultAsync(ct);
+
+        if (recipient is null)
+            return Results.Problem(statusCode: 404, title: "Recipient not found");
+        if (recipient.UserId == senderId)
+            return Results.Problem(statusCode: 400, title: "You cannot transfer to yourself");
+        
+        var existing = await FindReplayAsync(db, senderId, idempotencyKey, sender.WalletId, ct);
+        if (existing is not null) return Results.Ok(existing);
+
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            var journal = await ledger.PostAsync(
+                JournalType.Transfer, senderId, idempotencyKey, req.Note,
+                [new(sender.WalletId, -req.Amount), new (recipient.WalletId, req.Amount)], ct);
+
+            var evt = new TransferCompleted(
+                EventId: Guid.CreateVersion7(),
+                TransferId: journal.Id,
+                FromUserId: senderId,
+                ToUserId: recipient.UserId,
+                FromEmail: sender.Email,
+                ToEmail: recipient.Email,
+                Amount: req.Amount,
+                Currency: "MYR",
+                Note: req.Note,
+                OccuredAt: journal.CreatedAt
+            );
+
+            db.OutboxMessages.Add(new OutboxMessage
+            {
+                Id = evt.EventId,
+                Topic = Topics.Transfers,
+                Key = sender.WalletId.ToString(),
+                Type = nameof(TransferCompleted),
+                Payload = JsonSerializer.Serialize(evt, JsonSerializerOptions.Web),
+                OccurredAt = evt.OccuredAt,
+            });
+
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            var balance = journal.Postings.Single(p => p.AccountId == sender.WalletId).BalanceAfter;
+            return Results.Created("/api/wallet", new MoneyMovementResponse(journal.Id, req.Amount, balance));
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException {SqlState: PostgresErrorCodes.UniqueViolation})
+        {
+            db.ChangeTracker.Clear();
+            var replay = await FindReplayAsync(db, senderId, idempotencyKey, sender.WalletId, ct);
+            if (replay is not null) return Results.Ok(replay);
+            throw;
+        }
+
     }
 
     internal static Task<Guid> GetWalletIdAsync(WalletDbContext db, Guid userId, CancellationToken ct) =>

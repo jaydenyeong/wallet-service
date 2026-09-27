@@ -14,6 +14,11 @@ public sealed record TopupRequest(long Amount);
 public sealed record MoneyMovementResponse(Guid TransactionId, long Amount, long Balance);
 public sealed record TransferRequest(string ToEmail, long Amount, string? Note);
 
+public sealed record BalanceResponse(Guid AccountId, string Currency, long Balance);
+public sealed record TransactionItem(long Id, Guid TransactionId, string Type, long Amount, long BalanceAfter,
+                                    string? Counterparty, string? Note, DateTimeOffset CreatedAt);
+
+public sealed record TransactionPage(IReadOnlyList<TransactionItem> Items, long? NextCursor);
 
 public static class WalletEndpoints
 {
@@ -24,6 +29,8 @@ public static class WalletEndpoints
         var group = app.MapGroup("/api/wallet").RequireAuthorization().WithTags("Wallet");
         group.MapPost("/topups", Topup);
         group.MapPost("/transfers", Transfer);
+        group.MapGet("/", GetBalance);
+        group.MapGet("/transactions", GetTransactions);
         return app;
     }
 
@@ -141,7 +148,49 @@ public static class WalletEndpoints
             if (replay is not null) return Results.Ok(replay);
             throw;
         }
+    }
 
+    private static async Task<IResult> GetBalance(ClaimsPrincipal principal, WalletDbContext db, CancellationToken ct)
+    {
+        var userId = principal.GetUserId();
+        var wallet = await db.Accounts.AsNoTracking()
+            .Where(a => a.UserId == userId && a.Kind == AccountKind.UserWallet)
+            .Select(a => new BalanceResponse(a.Id, a.Currency, a.Balance))
+            .SingleAsync(ct);
+        return Results.Ok(wallet);
+    }
+
+    private static async Task<IResult> GetTransactions(
+        ClaimsPrincipal principal, WalletDbContext db, CancellationToken ct,
+        int limit = 20, long? before = null)
+    {
+        limit = Math.Clamp(limit, 1, 100);
+        var walletId = await GetWalletIdAsync(db, principal.GetUserId(), ct);
+
+        var query = db.Postings.AsNoTracking().Where(p => p.AccountId == walletId);
+        if (before is not null) query = query.Where(p => p.Id < before);
+
+        var rows = await query
+            .OrderByDescending(p => p.Id)
+            .Take(limit + 1)
+            .Select(p => new TransactionItem(
+                p.Id,
+                p.JournalEntryId,
+                p.JournalEntry.Type.ToString(),
+                p.Amount,
+                p.BalanceAfter,
+                (from o in db.Postings
+                join a in db.Accounts on o.AccountId equals a.Id
+                join u in db.Users on a.UserId equals (Guid?)u.Id
+                where o.JournalEntryId == p.JournalEntryId && o.AccountId != p.AccountId
+                select u.Email).FirstOrDefault(),
+                p.JournalEntry.Description,
+                p.CreatedAt
+            )).ToListAsync(ct);
+        
+        var hasMore = rows.Count > limit;
+        var items = rows.Take(limit).ToList();
+        return Results.Ok(new TransactionPage(items, hasMore ? items[^1].Id : null));
     }
 
     internal static Task<Guid> GetWalletIdAsync(WalletDbContext db, Guid userId, CancellationToken ct) =>

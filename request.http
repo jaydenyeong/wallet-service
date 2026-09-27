@@ -1,0 +1,43 @@
+@base = http://localhost:5228
+
+### Register Alce
+POST {{base}}/api/auth/register
+Content-Type: application/json
+
+{"email": "alice@example.com", "password": "Passw0rd!"}
+
+### Register Bob
+POST {{base}}/api/auth/register
+Content-Type: application/json
+{"email": "bob@mail.com", "password": "11111111"}
+
+### Login Alice
+# @name alice
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{"email": "alice@example.com", "password": "Passw0rd!"}
+
+### Balance
+GET {{base}}/api/wallet
+Authorization: Bearer {{alice.response.body.accessToken}}
+
+### Topup RM 50
+POST {{base}}/api/wallet/topups
+Authorization: Bearer {{alice.response.body.accessToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{"amount": 5000}
+
+### Transfer RM 20 to Bob
+POST {{base}}/api/wallet/transfers
+Authorization: Bearer {{alice.response.body.accessToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{"toEmail": "bob@mail.com", "amount": 2000, "note": "lunch"}
+
+###History
+GET {{base}}/api/wallet/transactions?limit=2
+Authorization: Bearer {{alice.response.body.accessToken}}

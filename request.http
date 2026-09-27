@@ -36,7 +36,7 @@ Authorization: Bearer {{alice.response.body.accessToken}}
 Idempotency-Key: {{$guid}}
 Content-Type: application/json
 
-{"toEmail": "bob@mail.com", "amount": 2000, "note": "lunch"}
+{"toEmail": "bob@mail.com", "amount": 1000, "note": "lunch"}
 
 ###History
 GET {{base}}/api/wallet/transactions?limit=2

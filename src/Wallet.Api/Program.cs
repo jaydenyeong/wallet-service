@@ -9,6 +9,8 @@ using Wallet.Api.Auth;
 using System.Text;
 using Wallet.Api;
 using Wallet.Api.Wallets;
+using Wallet.Api.Outbox;
+using Confluent.Kafka;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +24,17 @@ builder.Services.AddDbContext<WalletDbContext>(o => o
 builder.Services.AddSingleton(jwt);
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddSingleton<IProducer<string,string>>(_ =>
+    new ProducerBuilder<string, string>(new ProducerConfig
+    {
+        BootstrapServers = builder.Configuration["Kafka:BootstrapServers"],
+        Acks = Acks.All,
+        EnableIdempotence = true,
+        MessageTimeoutMs = 10_000,
+    }).Build());
+
+if (builder.Configuration.GetValue("Outbox:Enabled", true))
+    builder.Services.AddHostedService<OutboxPublisher>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

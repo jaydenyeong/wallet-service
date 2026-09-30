@@ -24,7 +24,7 @@ builder.Services.AddDbContext<WalletDbContext>(o => o
 builder.Services.AddSingleton(jwt);
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
-builder.Services.AddSingleton<IProducer<string,string>>(_ =>
+builder.Services.AddSingleton<IProducer<string, string>>(_ =>
     new ProducerBuilder<string, string>(new ProducerConfig
     {
         BootstrapServers = builder.Configuration["Kafka:BootstrapServers"],
@@ -53,13 +53,15 @@ builder.Services.AddAuthorization();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
-builder.Services.AddScoped<LedgerService>(); 
+builder.Services.AddScoped<LedgerService>();
+builder.Services.AddHealthChecks().AddDbContextCheck<WalletDbContext>();
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapHealthChecks("/health");
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

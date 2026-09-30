@@ -20,7 +20,7 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
         {
             HttpContext = ctx,
             Exception = ex,
-            ProblemDetails = {Status = status, Title = title, Detail = ex.Message},
+            ProblemDetails = { Status = status, Title = title, Detail = ex.Message },
         });
     }
 }

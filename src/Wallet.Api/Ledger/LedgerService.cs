@@ -5,7 +5,8 @@ namespace Wallet.Api.Ledger;
 
 public sealed record PostingRequest(Guid AccountId, long Amount);
 
-public sealed class LedgerService(WalletDbContext db){
+public sealed class LedgerService(WalletDbContext db)
+{
     public async Task<JournalEntry> PostAsync(
         JournalType type, Guid initiatedByUserId, string idempotencyKey, string? description,
         IReadOnlyList<PostingRequest> postings, CancellationToken ct)
@@ -22,7 +23,7 @@ public sealed class LedgerService(WalletDbContext db){
 
         if (accounts.Count != ids.Length)
             throw new AccountNotFoundException();
-        
+
         var now = DateTimeOffset.UtcNow;
         var journal = new JournalEntry
         {

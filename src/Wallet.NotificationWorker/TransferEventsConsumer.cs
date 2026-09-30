@@ -7,13 +7,13 @@ using Wallet.NotificationWorker.Data;
 namespace Wallet.NotificationWorker;
 
 public sealed class TransferEventsConsumer(
-    IServiceScopeFactory scopeFactory, 
-    IConfiguration config, 
+    IServiceScopeFactory scopeFactory,
+    IConfiguration config,
     ILogger<TransferEventsConsumer> logger) : BackgroundService
 {
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         Task.Run(() => RunAsync(stoppingToken), stoppingToken);
-    
+
     private async Task RunAsync(CancellationToken ct)
     {
         var consumerConfig = new ConsumerConfig
@@ -46,7 +46,7 @@ public sealed class TransferEventsConsumer(
 
                 if (evt is not null)
                     await HandleWithRetryAsync(evt, ct);
-                
+
                 consumer.Commit(result);
             }
         }
@@ -61,7 +61,8 @@ public sealed class TransferEventsConsumer(
     {
         while (true)
         {
-            try{
+            try
+            {
                 await HandleAsync(evt, ct);
                 return;
             }
@@ -82,25 +83,31 @@ public sealed class TransferEventsConsumer(
         var now = DateTimeOffset.UtcNow;
         var inserted = await db.Database.ExecuteSqlAsync(
             $"INSERT INTO processed_events (event_id, processed_at) VALUES ({evt.EventId}, {now}) ON CONFLICT DO NOTHING", ct);
-        
+
         if (inserted == 0)
         {
             logger.LogInformation("Duplicate event {EventId}, skipping", evt.EventId);
             return;
         }
-        
+
         var amount = $"RM {evt.Amount / 100m:N2}";
         var note = string.IsNullOrWhiteSpace(evt.Note) ? "" : $"({evt.Note})";
 
         db.Notifications.AddRange(
             new Notification
             {
-                Id = Guid.CreateVersion7(), UserId = evt.FromUserId, EventId = evt.EventId, CreatedAt = now,
+                Id = Guid.CreateVersion7(),
+                UserId = evt.FromUserId,
+                EventId = evt.EventId,
+                CreatedAt = now,
                 Message = $"You sent {amount} to {evt.ToEmail}{note}",
             },
             new Notification
             {
-                Id = Guid.CreateVersion7(), UserId = evt.ToUserId, EventId = evt.EventId, CreatedAt = now,
+                Id = Guid.CreateVersion7(),
+                UserId = evt.ToUserId,
+                EventId = evt.EventId,
+                CreatedAt = now,
                 Message = $"You received {amount} from {evt.FromEmail}{note}",
             }
         );

@@ -45,6 +45,31 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+  
+  api:
+    build: { context: ., dockerfile: src/Wallet.Api/Dockerfile }
+    profiles: [app]
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_started }
+    ports: ["5080:8080"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__WalletDb: Host=postgres;Database=wallet;Username=wallet;Password=wallet
+      Kafka__BootstrapServers: kafka:19092
+      Jwt__SigningKey: local-docker-signing-key-change-me-0123456789abcdef
+      Database__MigrateOnStartup: "true"
+
+  notification-worker:
+    build: { context: ., dockerfile: src/Wallet.NotificationWorker/Dockerfile }
+    profiles: [app]
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_started }
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__NotificationsDb: Host=postgres;Database=notifications;Username=wallet;Password=wallet
+      Kafka__BootstrapServers: kafka:19092
 
 volumes:
   pgdata:

@@ -17,23 +17,23 @@ public static class TestHelpers
         (await client.PostAsJsonAsync("/api/auth/register", body)).EnsureSuccessStatusCode();
         var login = await (await client.PostAsJsonAsync("/api/auth/login", body))
             .EnsureSuccessStatusCode().Content.ReadFromJsonAsync<LoginResponse>();
-        
+
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login!.AccessToken);
         return (client, email);
     }
 
     public static Task<HttpResponseMessage> TopupAsync(HttpClient c, long amount, string? key = null) =>
-        SendAsync(c, "/api/wallet/topups", new {amount}, key);
-    
+        SendAsync(c, "/api/wallet/topups", new { amount }, key);
+
     public static Task<HttpResponseMessage> TransferAsync(HttpClient c, string toEmail, long amount, string? key = null) =>
-        SendAsync(c, "/api/wallet/transfers", new {toEmail, amount}, key);
-    
+        SendAsync(c, "/api/wallet/transfers", new { toEmail, amount }, key);
+
     public static async Task<long> GetBalanceAsync(HttpClient c) =>
         (await c.GetFromJsonAsync<BalanceResponse>("/api/wallet"))!.Balance;
 
     private static Task<HttpResponseMessage> SendAsync(HttpClient c, string url, object body, string? key)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, url) {Content = JsonContent.Create(body)};
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
         req.Headers.Add("Idempotency-Key", key ?? Guid.NewGuid().ToString());
         return c.SendAsync(req);
     }

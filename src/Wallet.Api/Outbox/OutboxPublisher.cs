@@ -34,8 +34,8 @@ public sealed class OutboxPublisher(
             }
             if (published == 0)
             {
-                try {await Task.Delay(IdleDelay, stoppingToken);}
-                catch (OperationCanceledException) {break;}
+                try { await Task.Delay(IdleDelay, stoppingToken); }
+                catch (OperationCanceledException) { break; }
             }
         }
     }
@@ -55,7 +55,7 @@ public sealed class OutboxPublisher(
             LIMIT {BatchSize}
             FOR UPDATE SKIP LOCKED
             """).ToListAsync(ct);
-        
+
         if (batch.Count == 0) return 0;
 
         var published = 0;

@@ -43,7 +43,7 @@ public static class WalletEndpoints
             return Results.Problem(statusCode: 400, title: "A valid Idempotency-Key header is required");
         if (req.Amount <= 0 || req.Amount > MaxTopup)
             return Results.Problem(statusCode: 400, title: $"Amount must be between 1 and {MaxTopup} sen");
-        
+
         var userId = principal.GetUserId();
         var walletId = await GetWalletIdAsync(db, userId, ct);
 
@@ -62,7 +62,7 @@ public static class WalletEndpoints
             var balance = journal.Postings.Single(p => p.AccountId == walletId).BalanceAfter;
             return Results.Created("/api/wallet", new MoneyMovementResponse(journal.Id, req.Amount, balance));
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException {SqlState: PostgresErrorCodes.UniqueViolation})
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             db.ChangeTracker.Clear();
             var replay = await FindReplayAsync(db, userId, idempotencyKey, walletId, ct);
@@ -79,28 +79,28 @@ public static class WalletEndpoints
             return Results.Problem(statusCode: 400, title: "A valid Idempotency-Key header is required");
         if (req.Amount <= 0 || req.Amount > MaxTransfer)
             return Results.Problem(statusCode: 400, title: $"Amount must be between 1 and {MaxTransfer} sen");
-        if (req.Note is {Length: > 140})
+        if (req.Note is { Length: > 140 })
             return Results.Problem(statusCode: 400, title: "Note must be at most 140 characters");
-        
+
         var senderId = principal.GetUserId();
         var toEmail = (req.ToEmail ?? "").Trim().ToLowerInvariant();
 
         var sender = await db.Accounts.AsNoTracking()
             .Where(a => a.UserId == senderId && a.Kind == AccountKind.UserWallet)
-            .Join(db.Users, a => a.UserId, u => (Guid?)u.Id, (a, u) => new {WalletId = a.Id, u.Email})
+            .Join(db.Users, a => a.UserId, u => (Guid?)u.Id, (a, u) => new { WalletId = a.Id, u.Email })
             .SingleAsync(ct);
 
         var recipient = await db.Users.AsNoTracking()
             .Where(u => u.Email == toEmail)
             .Join(db.Accounts.Where(a => a.Kind == AccountKind.UserWallet),
-                u => (Guid?)u.Id, a => a.UserId, (u, a) => new {UserId = u.Id, WalletId = a.Id, u.Email})
+                u => (Guid?)u.Id, a => a.UserId, (u, a) => new { UserId = u.Id, WalletId = a.Id, u.Email })
             .SingleOrDefaultAsync(ct);
 
         if (recipient is null)
             return Results.Problem(statusCode: 404, title: "Recipient not found");
         if (recipient.UserId == senderId)
             return Results.Problem(statusCode: 400, title: "You cannot transfer to yourself");
-        
+
         var existing = await FindReplayAsync(db, senderId, idempotencyKey, sender.WalletId, ct);
         if (existing is not null) return Results.Ok(existing);
 
@@ -110,7 +110,7 @@ public static class WalletEndpoints
 
             var journal = await ledger.PostAsync(
                 JournalType.Transfer, senderId, idempotencyKey, req.Note,
-                [new(sender.WalletId, -req.Amount), new (recipient.WalletId, req.Amount)], ct);
+                [new(sender.WalletId, -req.Amount), new(recipient.WalletId, req.Amount)], ct);
 
             var evt = new TransferCompleted(
                 EventId: Guid.CreateVersion7(),
@@ -141,7 +141,7 @@ public static class WalletEndpoints
             var balance = journal.Postings.Single(p => p.AccountId == sender.WalletId).BalanceAfter;
             return Results.Created("/api/wallet", new MoneyMovementResponse(journal.Id, req.Amount, balance));
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException {SqlState: PostgresErrorCodes.UniqueViolation})
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             db.ChangeTracker.Clear();
             var replay = await FindReplayAsync(db, senderId, idempotencyKey, sender.WalletId, ct);
@@ -180,14 +180,14 @@ public static class WalletEndpoints
                 p.Amount,
                 p.BalanceAfter,
                 (from o in db.Postings
-                join a in db.Accounts on o.AccountId equals a.Id
-                join u in db.Users on a.UserId equals (Guid?)u.Id
-                where o.JournalEntryId == p.JournalEntryId && o.AccountId != p.AccountId
-                select u.Email).FirstOrDefault(),
+                 join a in db.Accounts on o.AccountId equals a.Id
+                 join u in db.Users on a.UserId equals (Guid?)u.Id
+                 where o.JournalEntryId == p.JournalEntryId && o.AccountId != p.AccountId
+                 select u.Email).FirstOrDefault(),
                 p.JournalEntry.Description,
                 p.CreatedAt
             )).ToListAsync(ct);
-        
+
         var hasMore = rows.Count > limit;
         var items = rows.Take(limit).ToList();
         return Results.Ok(new TransactionPage(items, hasMore ? items[^1].Id : null));
@@ -198,7 +198,7 @@ public static class WalletEndpoints
             .Where(a => a.UserId == userId && a.Kind == AccountKind.UserWallet)
             .Select(a => a.Id)
             .SingleAsync(ct);
-    
+
     internal static async Task<MoneyMovementResponse?> FindReplayAsync(
         WalletDbContext db, Guid userId, string key, Guid walletId, CancellationToken ct) =>
         await db.Postings.AsNoTracking()

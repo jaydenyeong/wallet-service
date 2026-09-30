@@ -36,7 +36,7 @@ public static class AuthEndpoints
             return Results.Problem(statusCode: 409, title: "Email already registered");
 
         var now = DateTimeOffset.UtcNow;
-        var user = new User {Id = Guid.CreateVersion7(), Email = email, CreatedAt = now};
+        var user = new User { Id = Guid.CreateVersion7(), Email = email, CreatedAt = now };
         user.PasswordHash = hasher.HashPassword(user, req.Password!);
 
         db.Users.Add(user);
@@ -54,7 +54,7 @@ public static class AuthEndpoints
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException {SqlState: PostgresErrorCodes.UniqueViolation})
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             return Results.Problem(statusCode: 409, title: "Email already registered");
         }

@@ -6,9 +6,7 @@ namespace Wallet.Api.Tests;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:17")
-        .Build();
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").Build();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -23,7 +21,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     async Task IAsyncLifetime.DisposeAsync()
     {
-        await _postgres.DisposeAsync();
-        await base.DisposeAsync();
+        await base.DisposeAsync();      // stop the API first...
+        await _postgres.DisposeAsync(); // ...then remove the database it was using
     }
 }
